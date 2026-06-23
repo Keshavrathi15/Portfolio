@@ -1,30 +1,8 @@
-"""
-Options Pricing Engine
-======================
-Prices European Call & Put options using:
-  1. Black-Scholes model
-  2. Binomial Tree model (Cox-Ross-Rubinstein)
-
-Also computes all 5 Greeks:
-  Delta, Gamma, Vega, Theta, Rho
-
-Outputs a 4-panel chart:
-  - Option price vs Spot price
-  - All Greeks vs Spot price
-  - Binomial vs Black-Scholes comparison
-  - Implied Volatility surface (heatmap)
-
-HOW TO RUN:
-  python options_pricing_engine.py
-  The chart saves as options_pricing_engine.png in the same folder.
-"""
-
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from scipy.stats import norm
 
-# ── 0. Style ──────────────────────────────────────────────────────────────────
 plt.rcParams.update({
     "figure.facecolor":  "#FAFAFA",
     "axes.facecolor":    "#FAFAFA",
@@ -37,22 +15,11 @@ plt.rcParams.update({
     "font.size":         10,
 })
 
-# ── 1. Base parameters ────────────────────────────────────────────────────────
-# Think of these like inputs to a financial calculator.
-# You can change any of these to price different options.
-
-S = 19500      # Current spot price (e.g. NIFTY at 19,500)
-K = 19500      # Strike price (at-the-money)
-T = 30/365     # Time to expiry: 30 days expressed as fraction of a year
-r = 0.065      # Risk-free rate: 6.5% (India 10Y gilt)
-sigma = 0.18   # Implied volatility: 18% (typical for NIFTY options)
-
-# ── 2. Black-Scholes Model ────────────────────────────────────────────────────
-# The Black-Scholes formula prices options by assuming stock prices
-# follow a random walk (log-normal distribution).
-#
-# d1 and d2 are intermediate values that feed into the normal distribution.
-# N(d1) and N(d2) give the probability-weighted payoffs.
+S = 19500      
+K = 19500     
+T = 30/365    
+r = 0.065     
+sigma = 0.18   
 
 def black_scholes(S, K, T, r, sigma, option_type="call"):
     """
@@ -70,7 +37,6 @@ def black_scholes(S, K, T, r, sigma, option_type="call"):
         price: Option price in same currency as S
     """
     if T <= 0:
-        # At expiry: call = max(S-K, 0), put = max(K-S, 0)
         if option_type == "call":
             return max(S - K, 0)
         else:
@@ -82,15 +48,9 @@ def black_scholes(S, K, T, r, sigma, option_type="call"):
     if option_type == "call":
         price = S * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
     else:
-        # Put-Call Parity: Put = Call - S + K*e^(-rT)
         price = K * np.exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
 
     return price
-
-
-# ── 3. Greeks ─────────────────────────────────────────────────────────────────
-# Greeks measure how sensitive an option's price is to each input.
-# Every options trader watches these daily.
 
 def compute_greeks(S, K, T, r, sigma, option_type="call"):
     """
@@ -107,23 +67,18 @@ def compute_greeks(S, K, T, r, sigma, option_type="call"):
 
     d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
     d2 = d1 - sigma * np.sqrt(T)
-
-    # Standard normal PDF at d1 (bell curve height)
+  
     nd1_pdf = norm.pdf(d1)
 
-    # Delta: how much option price moves when spot moves ₹1
     if option_type == "call":
         delta = norm.cdf(d1)
     else:
-        delta = norm.cdf(d1) - 1      # always negative for puts
+        delta = norm.cdf(d1) - 1    
 
-    # Gamma: same formula for calls and puts
     gamma = nd1_pdf / (S * sigma * np.sqrt(T))
 
-    # Vega: divide by 100 to express per 1% vol move
     vega = S * nd1_pdf * np.sqrt(T) / 100
 
-    # Theta: daily time decay (divide by 365)
     if option_type == "call":
         theta = (-(S * nd1_pdf * sigma) / (2 * np.sqrt(T))
                  - r * K * np.exp(-r * T) * norm.cdf(d2)) / 365
@@ -131,7 +86,6 @@ def compute_greeks(S, K, T, r, sigma, option_type="call"):
         theta = (-(S * nd1_pdf * sigma) / (2 * np.sqrt(T))
                  + r * K * np.exp(-r * T) * norm.cdf(-d2)) / 365
 
-    # Rho: divide by 100 to express per 1% rate move
     if option_type == "call":
         rho = K * T * np.exp(-r * T) * norm.cdf(d2) / 100
     else:
@@ -140,11 +94,6 @@ def compute_greeks(S, K, T, r, sigma, option_type="call"):
     return {"delta": delta, "gamma": gamma,
             "vega": vega,   "theta": theta, "rho": rho}
 
-
-# ── 4. Binomial Tree (Cox-Ross-Rubinstein) ────────────────────────────────────
-# An alternative to Black-Scholes that builds a tree of possible
-# future prices step by step. More steps = more accurate.
-# Converges to Black-Scholes as steps → infinity.
 
 def binomial_tree(S, K, T, r, sigma, option_type="call", steps=200):
     """
@@ -155,22 +104,19 @@ def binomial_tree(S, K, T, r, sigma, option_type="call", steps=200):
     2. At each step, price goes UP by factor u or DOWN by factor d
     3. Working backwards from expiry to today using risk-neutral probabilities
     """
-    dt = T / steps                         # length of each time step
-    u  = np.exp(sigma * np.sqrt(dt))       # up factor
-    d  = 1 / u                             # down factor (symmetric)
-    p  = (np.exp(r * dt) - d) / (u - d)   # risk-neutral probability of up move
+    dt = T / steps                       
+    u  = np.exp(sigma * np.sqrt(dt))      
+    d  = 1 / u                            
+    p  = (np.exp(r * dt) - d) / (u - d) 
 
-    # Build terminal price nodes (all possible prices at expiry)
     j       = np.arange(steps + 1)
     ST      = S * (u ** j) * (d ** (steps - j))
 
-    # Compute payoff at expiry
     if option_type == "call":
         payoff = np.maximum(ST - K, 0)
     else:
         payoff = np.maximum(K - ST, 0)
 
-    # Discount backwards through the tree (vectorised — fast!)
     discount = np.exp(-r * dt)
     for _ in range(steps):
         payoff = discount * (p * payoff[1:] + (1 - p) * payoff[:-1])
@@ -178,7 +124,6 @@ def binomial_tree(S, K, T, r, sigma, option_type="call", steps=200):
     return payoff[0]
 
 
-# ── 5. Compute prices for the base case ──────────────────────────────────────
 bs_call  = black_scholes(S, K, T, r, sigma, "call")
 bs_put   = black_scholes(S, K, T, r, sigma, "put")
 bt_call  = binomial_tree(S, K, T, r, sigma, "call")
@@ -201,16 +146,11 @@ print(f"  {'-'*36}")
 for g in ["delta", "gamma", "vega", "theta", "rho"]:
     print(f"  {g.capitalize():<8}  {greeks_c[g]:>10.4f}  {greeks_p[g]:>10.4f}")
 
-
-# ── 6. Build data for charts ──────────────────────────────────────────────────
-# Vary spot price from 80% to 120% of current price
 spot_range = np.linspace(S * 0.80, S * 1.20, 200)
 
-# Option prices across spot range
 call_prices = [black_scholes(s, K, T, r, sigma, "call") for s in spot_range]
 put_prices  = [black_scholes(s, K, T, r, sigma, "put")  for s in spot_range]
 
-# Greeks across spot range
 greek_names  = ["delta", "gamma", "vega", "theta", "rho"]
 greek_colors = ["#1D9E75", "#534AB7", "#D85A30", "#D4537E", "#888780"]
 greeks_by_spot = {g: [] for g in greek_names}
@@ -219,26 +159,22 @@ for s in spot_range:
     for name in greek_names:
         greeks_by_spot[name].append(g[name])
 
-# Binomial vs BS across step counts
 step_range  = range(5, 205, 5)
 bt_call_steps = [binomial_tree(S, K, T, r, sigma, "call", steps=n) for n in step_range]
 bt_put_steps  = [binomial_tree(S, K, T, r, sigma, "put",  steps=n) for n in step_range]
 
-# Implied Volatility surface: price grid over strikes x maturities
 strikes    = np.linspace(S * 0.85, S * 1.15, 12)
 maturities = np.array([7, 14, 21, 30, 45, 60, 90]) / 365
 iv_surface = np.zeros((len(maturities), len(strikes)))
 
-# Simulate a simple volatility smile: higher vol at extremes (realistic)
 for i, t in enumerate(maturities):
     for j, k in enumerate(strikes):
         moneyness    = np.log(k / S)
-        smile_adj    = 0.04 * moneyness**2    # parabolic smile
-        term_adj     = 0.02 * np.sqrt(t)      # term structure
+        smile_adj    = 0.04 * moneyness**2    
+        term_adj     = 0.02 * np.sqrt(t)     
         iv_surface[i, j] = (sigma + smile_adj - term_adj) * 100
 
 
-# ── 7. 4-Panel Chart ──────────────────────────────────────────────────────────
 fig = plt.figure(figsize=(16, 14))
 fig.suptitle("Options Pricing Engine — NIFTY European Options",
              fontsize=16, fontweight="bold", y=0.98, color="#1A1A1A")
@@ -248,7 +184,6 @@ gs = gridspec.GridSpec(2, 2, figure=fig, hspace=0.38, wspace=0.32)
 C = {"call": "#1D9E75", "put": "#534AB7", "bs": "#1D9E75",
      "bt": "#D85A30",   "atm": "#AAAAAA"}
 
-# ── Panel 1: Call & Put price vs Spot ────────────────────────────────────────
 ax1 = fig.add_subplot(gs[0, 0])
 ax1.plot(spot_range, call_prices, color=C["call"], lw=2.0, label="Call price")
 ax1.plot(spot_range, put_prices,  color=C["put"],  lw=2.0, label="Put price")
@@ -265,7 +200,6 @@ ax1.set_ylabel("Option Price (₹)")
 ax1.set_title("Black-Scholes: Call & Put price vs Spot", fontsize=11)
 ax1.legend(fontsize=9)
 
-# ── Panel 2: Greeks vs Spot ───────────────────────────────────────────────────
 ax2 = fig.add_subplot(gs[0, 1])
 for name, color in zip(greek_names, greek_colors):
     ax2.plot(spot_range, greeks_by_spot[name], color=color, lw=1.6, label=name.capitalize())
@@ -276,7 +210,6 @@ ax2.set_ylabel("Greek value")
 ax2.set_title("Call Greeks vs Spot Price", fontsize=11)
 ax2.legend(fontsize=9, ncol=2)
 
-# ── Panel 3: Binomial Tree convergence to Black-Scholes ──────────────────────
 ax3 = fig.add_subplot(gs[1, 0])
 ax3.plot(list(step_range), bt_call_steps, color=C["bt"],  lw=1.8, label="Binomial call")
 ax3.plot(list(step_range), bt_put_steps,  color=C["put"], lw=1.8, label="Binomial put", linestyle="--")
@@ -287,7 +220,6 @@ ax3.set_ylabel("Option Price (₹)")
 ax3.set_title("Binomial Tree convergence to Black-Scholes", fontsize=11)
 ax3.legend(fontsize=9)
 
-# ── Panel 4: Implied Volatility Surface ──────────────────────────────────────
 ax4 = fig.add_subplot(gs[1, 1])
 mat_labels    = ["7d", "14d", "21d", "30d", "45d", "60d", "90d"]
 strike_labels = [f"{int(k/1000)}K" for k in strikes]
@@ -301,13 +233,11 @@ ax4.set_xlabel("Strike Price")
 ax4.set_ylabel("Time to Expiry")
 ax4.set_title("Implied Volatility Surface (Vol Smile)", fontsize=11)
 
-# Annotate a few IV values
 for i in range(len(maturities)):
     for j in [0, 5, 11]:
         ax4.text(j, i, f"{iv_surface[i,j]:.1f}",
                  ha="center", va="center", fontsize=7.5, color="#333333")
 
-# ── Save ──────────────────────────────────────────────────────────────────────
 plt.savefig("options_pricing_engine.png", dpi=150, bbox_inches="tight", facecolor="#FAFAFA")
 print("\nChart saved → options_pricing_engine.png")
 plt.close()
